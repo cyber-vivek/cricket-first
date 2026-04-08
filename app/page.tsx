@@ -20,11 +20,14 @@ export default function Dashboard() {
     });
   }, []);
 
-  const totalHeld = players.reduce(
+  // Exclude the admin player from stats
+  const nonAdminPlayers = players.filter((p) => !p.is_admin);
+
+  const totalHeld = nonAdminPlayers.reduce(
     (sum, p) => sum + Math.max(0, Number(p.balance ?? 0)),
     0
   );
-  const totalOwed = players.reduce(
+  const totalOwed = nonAdminPlayers.reduce(
     (sum, p) => sum + Math.min(0, Number(p.balance ?? 0)),
     0
   );
@@ -43,9 +46,19 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Players" value={String(players.length)} color="gray" />
-        <StatCard label="Money Holding" value={`₹${totalHeld.toFixed(0)}`} color="green" />
-        <StatCard label="Total Owed" value={`₹${Math.abs(totalOwed).toFixed(0)}`} color="red" />
+        <StatCard label="Players" value={String(nonAdminPlayers.length)} color="gray" />
+        <StatCard
+          label="Money Holding"
+          value={`₹${totalHeld.toFixed(0)}`}
+          color="green"
+          tooltip="Total advance balance held across all players — money paid by players that hasn't been used yet."
+        />
+        <StatCard
+          label="Total Owed"
+          value={`₹${Math.abs(totalOwed).toFixed(0)}`}
+          color="red"
+          tooltip="Total amount owed by players who have a negative balance — they need to top up."
+        />
         <StatCard
           label="Pending Approvals"
           value={String(pending.length)}
@@ -76,12 +89,19 @@ export default function Dashboard() {
               return (
                 <li key={player.id} className="flex items-center justify-between px-5 py-3.5">
                   <div>
-                    <Link
-                      href={`/players/${player.id}`}
-                      className="font-medium text-gray-800 hover:text-blue-600 text-sm"
-                    >
-                      {player.name}
-                    </Link>
+                    <div className="flex items-center gap-1.5">
+                      <Link
+                        href={`/players/${player.id}`}
+                        className="font-medium text-gray-800 hover:text-blue-600 text-sm"
+                      >
+                        {player.name}
+                      </Link>
+                      {player.is_admin && (
+                        <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-medium">
+                          Admin
+                        </span>
+                      )}
+                    </div>
                     {player.phone && (
                       <p className="text-xs text-gray-400">{player.phone}</p>
                     )}
@@ -120,11 +140,13 @@ function StatCard({
   value,
   color,
   link,
+  tooltip,
 }: {
   label: string;
   value: string;
   color: 'gray' | 'green' | 'red' | 'amber';
   link?: string;
+  tooltip?: string;
 }) {
   const valueColors = {
     gray: 'text-gray-800',
@@ -134,8 +156,19 @@ function StatCard({
   };
 
   const card = (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-      <p className="text-xs text-gray-500 mb-1">{label}</p>
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 relative group">
+      <div className="flex items-center gap-1 mb-1">
+        <p className="text-xs text-gray-500">{label}</p>
+        {tooltip && (
+          <span className="relative">
+            <span className="text-gray-300 text-xs cursor-default select-none">ⓘ</span>
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-gray-800 text-white text-xs rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 leading-relaxed shadow-lg">
+              {tooltip}
+              <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800" />
+            </span>
+          </span>
+        )}
+      </div>
       <p className={`text-2xl font-bold ${valueColors[color]}`}>{value}</p>
     </div>
   );
