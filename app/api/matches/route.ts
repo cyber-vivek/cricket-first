@@ -71,6 +71,7 @@ export async function POST(req: Request) {
   }
 
   // 3. Create APPROVED MATCH transactions (negative amount = deduction)
+  const now = new Date().toISOString();
   const txRows = player_ids.map((pid: string) => ({
     player_id: pid,
     amount: -perPerson,
@@ -78,8 +79,21 @@ export async function POST(req: Request) {
     status: 'APPROVED',
     reference_id: match.id,
     notes: `Match on ${date} – ₹${perPerson} deducted`,
-    approved_at: new Date().toISOString(),
+    approved_at: now,
   }));
+
+  // Admin paid on behalf of everyone — offset their share so their net stays zero
+  if (player_ids.includes(admin_id)) {
+    txRows.push({
+      player_id: admin_id,
+      amount: perPerson,
+      type: 'ADJUSTMENT',
+      status: 'APPROVED',
+      reference_id: match.id,
+      notes: `Match on ${date} – admin share offset (paid by admin)`,
+      approved_at: now,
+    });
+  }
 
   const { error: txError } = await supabase.from('transactions').insert(txRows);
 

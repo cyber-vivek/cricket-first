@@ -20,14 +20,13 @@ export default function Dashboard() {
     });
   }, []);
 
-  // Exclude the admin player from stats
   const nonAdminPlayers = players.filter((p) => !p.is_admin);
 
-  const totalHeld = nonAdminPlayers.reduce(
+  const totalHeld = players.reduce(
     (sum, p) => sum + Math.max(0, Number(p.balance ?? 0)),
     0
   );
-  const totalOwed = nonAdminPlayers.reduce(
+  const totalOwed = players.reduce(
     (sum, p) => sum + Math.min(0, Number(p.balance ?? 0)),
     0
   );
