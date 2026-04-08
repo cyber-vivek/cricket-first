@@ -73,7 +73,13 @@ export default function TopupPage() {
         <p className="text-sm text-blue-700">
           UPI ID:{' '}
           <span className="font-mono font-bold bg-blue-100 px-2 py-0.5 rounded">
-            admin@upi
+            {process.env.NEXT_PUBLIC_ADMIN_UPI}
+          </span>
+        </p>
+        <p className="text-sm text-blue-700">
+          UPI NAME:{' '}
+          <span className="font-mono font-bold px-2 py-0.5 rounded">
+            {process.env.NEXT_PUBLIC_ADMIN_NAME}
           </span>
         </p>
         <p className="text-xs text-blue-500 mt-2">
