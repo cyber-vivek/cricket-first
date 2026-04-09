@@ -31,6 +31,14 @@ export default function AdminPage() {
   const [addError, setAddError] = useState('');
   const [addSuccess, setAddSuccess] = useState('');
 
+  // Change PIN form
+  const [showPinForm, setShowPinForm] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinSubmitting, setPinSubmitting] = useState(false);
+  const [pinError, setPinError] = useState('');
+  const [pinSuccess, setPinSuccess] = useState('');
+
   const fetchData = () => {
     Promise.all([
       fetch('/api/transactions?status=PENDING').then((r) => r.json()),
@@ -55,6 +63,34 @@ export default function AdminPage() {
     });
     if (res.ok) fetchData();
     setProcessing(null);
+  };
+
+  const handleChangePin = async (e: React.SyntheticEvent) => {
+    e.preventDefault();
+    setPinError('');
+    setPinSuccess('');
+
+    if (newPin !== confirmPin) {
+      setPinError('PINs do not match');
+      return;
+    }
+
+    setPinSubmitting(true);
+    const res = await fetch(`/api/players/${user?.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'change_pin', new_pin: newPin, admin_id: user?.id }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      setPinError(data.error ?? 'Failed to change PIN');
+    } else {
+      setPinSuccess('PIN changed successfully');
+      setNewPin('');
+      setConfirmPin('');
+    }
+    setPinSubmitting(false);
   };
 
   const handleManualAdd = async (e: React.SyntheticEvent) => {
@@ -259,6 +295,65 @@ export default function AdminPage() {
                 : '+ Add Balance'}
             </button>
           </form>
+        </div>
+      </section>
+      {/* Change PIN */}
+      <section>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => {
+              setShowPinForm((v) => !v);
+              setPinError('');
+              setPinSuccess('');
+              setNewPin('');
+              setConfirmPin('');
+            }}
+            className="w-full flex items-center justify-between px-5 py-4 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+          >
+            <span>Change Admin PIN</span>
+            <span className="text-gray-400">{showPinForm ? '▲' : '▼'}</span>
+          </button>
+
+          {showPinForm && (
+            <div className="px-5 pb-5 border-t border-gray-100">
+              <form onSubmit={handleChangePin} className="space-y-3 pt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">New PIN</label>
+                    <input
+                      type="password"
+                      placeholder="Enter new PIN"
+                      value={newPin}
+                      onChange={(e) => setNewPin(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Confirm PIN</label>
+                    <input
+                      type="password"
+                      placeholder="Re-enter new PIN"
+                      value={confirmPin}
+                      onChange={(e) => setConfirmPin(e.target.value)}
+                      required
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                    />
+                  </div>
+                </div>
+                {pinError && <p className="text-red-500 text-sm">{pinError}</p>}
+                {pinSuccess && <p className="text-green-600 text-sm">{pinSuccess}</p>}
+                <button
+                  type="submit"
+                  disabled={pinSubmitting}
+                  className="bg-green-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                >
+                  {pinSubmitting ? 'Saving…' : 'Update PIN'}
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </section>
     </div>

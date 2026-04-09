@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { requireAdmin } from '@/lib/require-admin';
+import { hashPin } from '@/lib/hash';
 
 type Params = Promise<{ id: string }>;
 
@@ -48,6 +49,27 @@ export async function PATCH(req: Request, { params }: { params: Params }) {
     const { error } = await supabase
       .from('players')
       .update({ deactivated_at: body.action === 'deactivate' ? new Date().toISOString() : null })
+      .eq('id', id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  }
+
+  // Change PIN — admin only, only for admin players
+  if (body.action === 'change_pin') {
+    const authError = await requireAdmin(body.admin_id);
+    if (authError) return authError;
+
+    if (!body.new_pin?.trim()) {
+      return NextResponse.json({ error: 'New PIN is required' }, { status: 400 });
+    }
+
+    const { error } = await supabase
+      .from('players')
+      .update({ pin: hashPin(body.new_pin, id) })
       .eq('id', id);
 
     if (error) {

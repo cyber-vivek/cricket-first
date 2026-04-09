@@ -20,8 +20,6 @@ export default function Dashboard() {
     });
   }, []);
 
-  const nonAdminPlayers = players.filter((p) => !p.is_admin);
-
   const totalHeld = players.reduce(
     (sum, p) => sum + Math.max(0, Number(p.balance ?? 0)),
     0
@@ -45,7 +43,7 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <StatCard label="Players" value={String(nonAdminPlayers.length)} color="gray" />
+        <StatCard label="Players" value={String(players.length)} color="gray" />
         <StatCard
           label="Money Holding"
           value={`₹${totalHeld.toFixed(2)}`}
