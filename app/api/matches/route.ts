@@ -28,21 +28,42 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const supabase = createServerClient();
-  const { date, total_cost, player_ids, notes, admin_id } = await req.json();
+  const { date, total_cost, player_shares, notes, admin_id } = await req.json();
 
   const authError = await requireAdmin(admin_id);
   if (authError) return authError;
 
-  if (!date || !total_cost || !Array.isArray(player_ids) || player_ids.length === 0) {
+  if (!date || !total_cost || !Array.isArray(player_shares) || player_shares.length === 0) {
     return NextResponse.json(
       { error: 'Date, total cost and at least one player are required' },
       { status: 400 }
     );
   }
 
-  // Round to 2 decimal places to avoid floating-point issues
-  const perPerson =
-    Math.round((Number(total_cost) / player_ids.length) * 100) / 100;
+  const effectivePlayerIds: string[] = player_shares.map(
+    (s: { player_id: string; amount: number }) => s.player_id
+  );
+
+  // Build per-player amount map
+  const amountMap: Record<string, number> = {};
+  for (const s of player_shares as { player_id: string; amount: number }[]) {
+    const amt = Number(s.amount);
+    if (!s.player_id || isNaN(amt) || amt <= 0) {
+      return NextResponse.json(
+        { error: 'Each player share must have a valid player_id and a positive amount' },
+        { status: 400 }
+      );
+    }
+    amountMap[s.player_id] = Math.round(amt * 100) / 100;
+  }
+
+  const sharesTotal = Object.values(amountMap).reduce((sum, v) => sum + v, 0);
+  if (Math.abs(sharesTotal - Number(total_cost)) > 0.5) {
+    return NextResponse.json(
+      { error: `Player shares (₹${sharesTotal.toFixed(2)}) must add up to total cost (₹${Number(total_cost).toFixed(2)})` },
+      { status: 400 }
+    );
+  }
 
   // 1. Create match record
   const { data: match, error: matchError } = await supabase
@@ -56,10 +77,10 @@ export async function POST(req: Request) {
   }
 
   // 2. Create match_players records
-  const matchPlayersRows = player_ids.map((pid: string) => ({
+  const matchPlayersRows = effectivePlayerIds.map((pid: string) => ({
     match_id: match.id,
     player_id: pid,
-    cost_share: perPerson,
+    cost_share: amountMap[pid],
   }));
 
   const { error: mpError } = await supabase
@@ -72,21 +93,21 @@ export async function POST(req: Request) {
 
   // 3. Create APPROVED MATCH transactions (negative amount = deduction)
   const now = new Date().toISOString();
-  const txRows = player_ids.map((pid: string) => ({
+  const txRows = effectivePlayerIds.map((pid: string) => ({
     player_id: pid,
-    amount: -perPerson,
+    amount: -amountMap[pid],
     type: 'MATCH',
     status: 'APPROVED',
     reference_id: match.id,
-    notes: `Match on ${date} – ₹${perPerson} deducted`,
+    notes: `Match on ${date} – ₹${amountMap[pid]} deducted`,
     approved_at: now,
   }));
 
   // Admin paid on behalf of everyone — offset their share so their net stays zero
-  if (player_ids.includes(admin_id)) {
+  if (effectivePlayerIds.includes(admin_id)) {
     txRows.push({
       player_id: admin_id,
-      amount: perPerson,
+      amount: amountMap[admin_id],
       type: 'ADJUSTMENT',
       status: 'APPROVED',
       reference_id: match.id,

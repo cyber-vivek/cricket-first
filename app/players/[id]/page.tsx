@@ -134,7 +134,7 @@ export default function PlayerDetailPage() {
                         : 'text-green-600'
                     }`}
                   >
-                    {isDebit ? '' : '+'}₹{Math.abs(amt).toFixed(0)}
+                    {isDebit ? '' : '+'}₹{Math.abs(amt).toFixed(2)}
                   </span>
                 </li>
               );

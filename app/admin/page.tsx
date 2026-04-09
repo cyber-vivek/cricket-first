@@ -126,7 +126,7 @@ export default function AdminPage() {
                       {tx.players?.name ?? '—'}
                     </p>
                     <p className="text-2xl font-bold text-green-600 mt-0.5">
-                      +₹{Number(tx.amount).toFixed(0)}
+                      +₹{Number(tx.amount).toFixed(2)}
                     </p>
                     {tx.notes && (
                       <p className="text-sm text-gray-500 mt-1">{tx.notes}</p>
@@ -212,7 +212,7 @@ export default function AdminPage() {
                   <option value="">Select player…</option>
                   {players.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (₹{Number(p.balance ?? 0).toFixed(0)})
+                      {p.name} (₹{Number(p.balance ?? 0).toFixed(2)})
                     </option>
                   ))}
                 </select>
@@ -225,7 +225,8 @@ export default function AdminPage() {
                   value={addAmount}
                   onChange={(e) => setAddAmount(e.target.value)}
                   required
-                  min="1"
+                  min="0.01"
+                  step="0.01"
                   className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                 />
               </div>

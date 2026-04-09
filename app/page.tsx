@@ -48,13 +48,13 @@ export default function Dashboard() {
         <StatCard label="Players" value={String(nonAdminPlayers.length)} color="gray" />
         <StatCard
           label="Money Holding"
-          value={`₹${totalHeld.toFixed(0)}`}
+          value={`₹${totalHeld.toFixed(2)}`}
           color="green"
           tooltip="Total advance balance held across all players — money paid by players that hasn't been used yet."
         />
         <StatCard
           label="Total Owed"
-          value={`₹${Math.abs(totalOwed).toFixed(0)}`}
+          value={`₹${Math.abs(totalOwed).toFixed(2)}`}
           color="red"
           tooltip="Total amount owed by players who have a negative balance — they need to top up."
         />
@@ -111,7 +111,7 @@ export default function Dashboard() {
                         bal >= 0 ? 'text-green-600' : 'text-red-500'
                       }`}
                     >
-                      {bal >= 0 ? '+' : ''}₹{bal.toFixed(0)}
+                      {bal >= 0 ? '+' : ''}₹{bal.toFixed(2)}
                     </span>
                     <p className={`text-xs ${bal >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                       {bal >= 0 ? 'advance' : 'owes'}

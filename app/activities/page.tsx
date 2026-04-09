@@ -19,6 +19,8 @@ export default function ActivitiesPage() {
   const [totalCost, setTotalCost] = useState('');
   const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
+  const [customSplit, setCustomSplit] = useState(false);
+  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
 
   const fetchData = () => {
     Promise.all([
@@ -33,18 +35,30 @@ export default function ActivitiesPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const togglePlayer = (id: string) =>
-    setSelectedPlayers((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
+  const togglePlayer = (id: string) => {
+    setSelectedPlayers((prev) => {
+      if (prev.includes(id)) {
+        const next = prev.filter((p) => p !== id);
+        setCustomAmounts((ca) => { const c = { ...ca }; delete c[id]; return c; });
+        return next;
+      }
+      return [...prev, id];
+    });
+  };
 
   const selectAll = () => setSelectedPlayers(players.map((p) => p.id));
-  const deselectAll = () => setSelectedPlayers([]);
+  const deselectAll = () => { setSelectedPlayers([]); setCustomAmounts({}); };
 
   const perPerson =
     selectedPlayers.length > 0 && totalCost
       ? (Number(totalCost) / selectedPlayers.length).toFixed(2)
       : null;
+
+  const customTotal = selectedPlayers.reduce(
+    (sum, pid) => sum + (Number(customAmounts[pid]) || 0),
+    0
+  );
+  const remaining = totalCost ? Number(totalCost) - customTotal : 0;
 
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
@@ -55,18 +69,40 @@ export default function ActivitiesPage() {
       return;
     }
 
+    if (customSplit) {
+      for (const pid of selectedPlayers) {
+        if (!customAmounts[pid] || Number(customAmounts[pid]) <= 0) {
+          setError('Enter a valid amount for every selected player');
+          return;
+        }
+      }
+      if (Math.abs(remaining) > 0.5) {
+        setError(`Amounts must add up to ₹${totalCost}. Difference: ₹${remaining.toFixed(2)}`);
+        return;
+      }
+    }
+
     setCreating(true);
+
+    const perPersonAmount =
+      Math.round((Number(totalCost) / selectedPlayers.length) * 100) / 100;
+
+    const body = {
+      date,
+      title,
+      total_cost: Number(totalCost),
+      player_shares: selectedPlayers.map((pid) => ({
+        player_id: pid,
+        amount: customSplit ? Number(customAmounts[pid]) : perPersonAmount,
+      })),
+      notes,
+      admin_id: user?.id,
+    };
+
     const res = await fetch('/api/activities', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        date,
-        title,
-        total_cost: Number(totalCost),
-        player_ids: selectedPlayers,
-        notes,
-        admin_id: user?.id,
-      }),
+      body: JSON.stringify(body),
     });
 
     const data = await res.json();
@@ -79,6 +115,8 @@ export default function ActivitiesPage() {
       setTotalCost('');
       setSelectedPlayers([]);
       setNotes('');
+      setCustomSplit(false);
+      setCustomAmounts({});
       fetchData();
     }
     setCreating(false);
@@ -138,19 +176,59 @@ export default function ActivitiesPage() {
                 value={totalCost}
                 onChange={(e) => setTotalCost(e.target.value)}
                 required
-                min="1"
+                min="0.01"
+                step="0.01"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400"
               />
+            </div>
+
+            {/* Split mode toggle */}
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-gray-500">Split:</span>
+              <button
+                type="button"
+                onClick={() => { setCustomSplit(false); setCustomAmounts({}); }}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  !customSplit
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                Equal
+              </button>
+              <button
+                type="button"
+                onClick={() => setCustomSplit(true)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  customSplit
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                }`}
+              >
+                Custom
+              </button>
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-xs text-gray-500">
                   Players{' '}
-                  {selectedPlayers.length > 0 && (
+                  {selectedPlayers.length > 0 && !customSplit && (
                     <span className="text-green-600 font-medium">
                       ({selectedPlayers.length} selected
                       {perPerson ? ` · ₹${perPerson} each` : ''})
+                    </span>
+                  )}
+                  {selectedPlayers.length > 0 && customSplit && (
+                    <span className={`font-medium ${Math.abs(remaining) <= 0.5 ? 'text-green-600' : 'text-amber-500'}`}>
+                      ({selectedPlayers.length} selected
+                      {totalCost
+                        ? remaining > 0.5
+                          ? ` · ₹${remaining.toFixed(2)} unallocated`
+                          : remaining < -0.5
+                          ? ` · ₹${Math.abs(remaining).toFixed(2)} over`
+                          : ' · balanced'
+                        : ''})
                     </span>
                   )}
                 </label>
@@ -160,30 +238,76 @@ export default function ActivitiesPage() {
                   <button type="button" onClick={deselectAll} className="text-gray-400 hover:underline">None</button>
                 </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {players.map((player) => {
-                  const selected = selectedPlayers.includes(player.id);
-                  return (
-                    <button
-                      key={player.id}
-                      type="button"
-                      onClick={() => togglePlayer(player.id)}
-                      className={`flex items-center gap-2 p-2.5 rounded-lg border text-sm transition-colors ${
-                        selected
-                          ? 'border-green-400 bg-green-50 text-green-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      <span className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center text-xs border ${
-                        selected ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300'
-                      }`}>
-                        {selected ? '✓' : ''}
-                      </span>
-                      <span className="truncate">{player.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+
+              {!customSplit ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {players.map((player) => {
+                    const selected = selectedPlayers.includes(player.id);
+                    return (
+                      <button
+                        key={player.id}
+                        type="button"
+                        onClick={() => togglePlayer(player.id)}
+                        className={`flex items-center gap-2 p-2.5 rounded-lg border text-sm transition-colors ${
+                          selected
+                            ? 'border-green-400 bg-green-50 text-green-700'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center text-xs border ${
+                          selected ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300'
+                        }`}>
+                          {selected ? '✓' : ''}
+                        </span>
+                        <span className="truncate">{player.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {players.map((player) => {
+                    const selected = selectedPlayers.includes(player.id);
+                    return (
+                      <div
+                        key={player.id}
+                        className={`flex items-center gap-3 p-2.5 rounded-lg border transition-colors ${
+                          selected ? 'border-green-300 bg-green-50' : 'border-gray-200 bg-white'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => togglePlayer(player.id)}
+                          className={`w-4 h-4 rounded flex-shrink-0 flex items-center justify-center text-xs border ${
+                            selected ? 'border-green-500 bg-green-500 text-white' : 'border-gray-300'
+                          }`}
+                        >
+                          {selected ? '✓' : ''}
+                        </button>
+                        <span className={`flex-1 text-sm truncate ${selected ? 'text-green-700' : 'text-gray-500'}`}>
+                          {player.name}
+                        </span>
+                        {selected && (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-400">₹</span>
+                            <input
+                              type="number"
+                              placeholder="0"
+                              value={customAmounts[player.id] ?? ''}
+                              onChange={(e) =>
+                                setCustomAmounts((ca) => ({ ...ca, [player.id]: e.target.value }))
+                              }
+                              min="0"
+                              step="any"
+                              className="w-24 border border-gray-200 rounded-md px-2 py-1 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-400"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>
@@ -231,6 +355,9 @@ export default function ActivitiesPage() {
         <div className="space-y-3">
           {activities.map((activity) => {
             const aPlayers = activity.activity_players ?? [];
+            const allSame = aPlayers.length > 0 && aPlayers.every(
+              (ap) => Number(ap.cost_share) === Number(aPlayers[0].cost_share)
+            );
             return (
               <div key={activity.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
                 <div className="flex items-start justify-between gap-4 mb-3">
@@ -249,10 +376,12 @@ export default function ActivitiesPage() {
                     )}
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-gray-800">₹{Number(activity.total_cost).toFixed(0)}</p>
+                    <p className="font-bold text-gray-800">₹{Number(activity.total_cost).toFixed(2)}</p>
                     <p className="text-xs text-gray-400">
-                      {aPlayers.length} player{aPlayers.length !== 1 ? 's' : ''}{' '}
-                      {aPlayers.length > 0 ? `· ₹${Number(aPlayers[0].cost_share).toFixed(0)} each` : ''}
+                      {aPlayers.length} player{aPlayers.length !== 1 ? 's' : ''}
+                      {allSame && aPlayers.length > 0
+                        ? ` · ₹${Number(aPlayers[0].cost_share).toFixed(2)} each`
+                        : ' · custom split'}
                     </p>
                   </div>
                 </div>
@@ -260,6 +389,9 @@ export default function ActivitiesPage() {
                   {aPlayers.map((ap) => (
                     <span key={ap.id} className="text-xs bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full">
                       {ap.players?.name}
+                      {!allSame && (
+                        <span className="ml-1 text-orange-400">₹{Number(ap.cost_share).toFixed(2)}</span>
+                      )}
                     </span>
                   ))}
                 </div>

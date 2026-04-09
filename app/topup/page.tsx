@@ -120,7 +120,8 @@ export default function TopupPage() {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               required
-              min="1"
+              min="0.01"
+              step="0.01"
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400"
             />
           </div>
@@ -172,7 +173,7 @@ export default function TopupPage() {
                   </p>
                 </div>
                 <span className="text-amber-600 font-semibold text-sm">
-                  ₹{Number(tx.amount).toFixed(0)}
+                  ₹{Number(tx.amount).toFixed(2)}
                 </span>
               </li>
             ))}

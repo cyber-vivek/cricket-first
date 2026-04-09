@@ -201,7 +201,7 @@ export default function PlayersPage() {
                     </div>
                     <div className="flex items-center gap-3">
                       <span className={`font-semibold text-sm ${bal >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {bal >= 0 ? '+' : ''}₹{bal.toFixed(0)}
+                        {bal >= 0 ? '+' : ''}₹{bal.toFixed(2)}
                       </span>
                       <Link href={`/players/${player.id}`} className="text-xs text-gray-400 hover:text-blue-500">
                         View →
