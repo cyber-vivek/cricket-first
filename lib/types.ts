@@ -1,10 +1,17 @@
+export type PlayerRole = 'player' | 'game_admin' | 'admin';
+
 export interface Player {
   id: string;
   name: string;
   phone?: string | null;
+  role: PlayerRole;
   is_admin: boolean;
   created_at: string;
   balance?: number;
+}
+
+export function canManageGames(user: Pick<Player, 'role'> | null | undefined): boolean {
+  return user?.role === 'admin' || user?.role === 'game_admin';
 }
 
 export interface Match {
@@ -13,6 +20,8 @@ export interface Match {
   total_cost: number;
   notes?: string | null;
   created_at: string;
+  created_by?: string | null;
+  creator?: { id: string; name: string } | null;
   match_players?: MatchPlayer[];
 }
 
@@ -33,6 +42,8 @@ export interface Activity {
   total_cost: number;
   notes?: string | null;
   created_at: string;
+  created_by?: string | null;
+  creator?: { id: string; name: string } | null;
   activity_players?: ActivityPlayer[];
 }
 

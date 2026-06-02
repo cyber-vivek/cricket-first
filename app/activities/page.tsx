@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Player, Activity } from '@/lib/types';
+import { Player, Activity, canManageGames } from '@/lib/types';
 import { useAuth } from '@/lib/auth-context';
 
 export default function ActivitiesPage() {
@@ -12,6 +12,7 @@ export default function ActivitiesPage() {
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const today = new Date().toISOString().split('T')[0];
   const [date, setDate] = useState(today);
@@ -60,6 +61,39 @@ export default function ActivitiesPage() {
   );
   const remaining = totalCost ? Number(totalCost) - customTotal : 0;
 
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setDate(today);
+    setTitle('');
+    setTotalCost('');
+    setSelectedPlayers([]);
+    setNotes('');
+    setCustomSplit(false);
+    setCustomAmounts({});
+    setError('');
+  };
+
+  const startEdit = (activity: Activity) => {
+    const aps = activity.activity_players ?? [];
+    const ids = aps.map((ap) => ap.player_id);
+    const amounts: Record<string, string> = {};
+    aps.forEach((ap) => { amounts[ap.player_id] = String(ap.cost_share); });
+    const firstShare = aps[0] ? Number(aps[0].cost_share) : 0;
+    const allSame = aps.length > 0 && aps.every((ap) => Number(ap.cost_share) === firstShare);
+
+    setEditingId(activity.id);
+    setShowForm(true);
+    setDate(activity.date);
+    setTitle(activity.title);
+    setTotalCost(String(activity.total_cost));
+    setSelectedPlayers(ids);
+    setNotes(activity.notes ?? '');
+    setCustomSplit(!allSame);
+    setCustomAmounts(allSame ? {} : amounts);
+    setError('');
+  };
+
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setError('');
@@ -99,24 +133,20 @@ export default function ActivitiesPage() {
       admin_id: user?.id,
     };
 
-    const res = await fetch('/api/activities', {
-      method: 'POST',
+    const url = editingId ? `/api/activities/${editingId}` : '/api/activities';
+    const method = editingId ? 'PATCH' : 'POST';
+
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? 'Failed to record activity');
+      setError(data.error ?? (editingId ? 'Failed to update activity' : 'Failed to record activity'));
     } else {
-      setShowForm(false);
-      setDate(today);
-      setTitle('');
-      setTotalCost('');
-      setSelectedPlayers([]);
-      setNotes('');
-      setCustomSplit(false);
-      setCustomAmounts({});
+      resetForm();
       fetchData();
     }
     setCreating(false);
@@ -129,20 +159,22 @@ export default function ActivitiesPage() {
           <h1 className="text-2xl font-bold text-gray-800">Activities</h1>
           <p className="text-sm text-gray-500 mt-0.5">Breakfast, snacks, and other group expenses</p>
         </div>
-        {user?.is_admin && (
+        {canManageGames(user) && (
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => (showForm ? resetForm() : setShowForm(true))}
             className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700"
           >
-            + New Activity
+            {showForm ? 'Close' : '+ New Activity'}
           </button>
         )}
       </div>
 
       {/* Create activity form — admin only */}
-      {user?.is_admin && showForm && (
+      {canManageGames(user) && showForm && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-700 text-sm mb-4">Record Activity</h2>
+          <h2 className="font-semibold text-gray-700 text-sm mb-4">
+            {editingId ? 'Edit Activity' : 'Record Activity'}
+          </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -329,11 +361,15 @@ export default function ActivitiesPage() {
                 disabled={creating}
                 className="bg-green-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
               >
-                {creating ? 'Saving…' : 'Record & Deduct'}
+                {creating
+                  ? 'Saving…'
+                  : editingId
+                  ? 'Save Changes'
+                  : 'Record & Deduct'}
               </button>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                onClick={resetForm}
                 className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
               >
                 Cancel
@@ -359,7 +395,12 @@ export default function ActivitiesPage() {
               (ap) => Number(ap.cost_share) === Number(aPlayers[0].cost_share)
             );
             return (
-              <div key={activity.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+              <div
+                key={activity.id}
+                className={`bg-white rounded-xl border shadow-sm p-5 ${
+                  editingId === activity.id ? 'border-green-300 ring-1 ring-green-200' : 'border-gray-100'
+                }`}
+              >
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <div>
                     <p className="font-semibold text-gray-800 text-sm">{activity.title}</p>
@@ -374,6 +415,11 @@ export default function ActivitiesPage() {
                     {activity.notes && (
                       <p className="text-xs text-gray-400 mt-0.5">{activity.notes}</p>
                     )}
+                    {activity.creator?.name && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Added by {activity.creator.name}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="font-bold text-gray-800">₹{Number(activity.total_cost).toFixed(2)}</p>
@@ -383,6 +429,14 @@ export default function ActivitiesPage() {
                         ? ` · ₹${Number(aPlayers[0].cost_share).toFixed(2)} each`
                         : ' · custom split'}
                     </p>
+                    {canManageGames(user) && (
+                      <button
+                        onClick={() => startEdit(activity)}
+                        className="text-xs text-blue-500 hover:underline mt-1"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">

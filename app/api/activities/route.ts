@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
-import { requireAdmin } from '@/lib/require-admin';
+import { requireGameAdmin } from '@/lib/require-admin';
 
 export async function GET() {
   const supabase = createServerClient();
@@ -9,6 +9,7 @@ export async function GET() {
     .from('activities')
     .select(`
       *,
+      creator:players!activities_created_by_fkey ( id, name ),
       activity_players (
         id,
         player_id,
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
   const supabase = createServerClient();
   const { date, title, total_cost, player_shares, notes, admin_id } = await req.json();
 
-  const authError = await requireAdmin(admin_id);
+  const authError = await requireGameAdmin(admin_id);
   if (authError) return authError;
 
   if (!title?.trim()) {
@@ -72,7 +73,13 @@ export async function POST(req: Request) {
   // 1. Create activity record
   const { data: activity, error: activityError } = await supabase
     .from('activities')
-    .insert({ date, title: title.trim(), total_cost: Number(total_cost), notes: notes?.trim() || null })
+    .insert({
+      date,
+      title: title.trim(),
+      total_cost: Number(total_cost),
+      notes: notes?.trim() || null,
+      created_by: admin_id,
+    })
     .select()
     .single();
 
@@ -105,11 +112,17 @@ export async function POST(req: Request) {
     approved_at: now,
   }));
 
-  // Admin paid on behalf of everyone — offset their share so their net stays zero
-  if (effectivePlayerIds.includes(admin_id)) {
+  // Admin is the wallet-holder and pays regardless of who records — offset their share if present.
+  const { data: adminPlayer } = await supabase
+    .from('players')
+    .select('id')
+    .eq('role', 'admin')
+    .maybeSingle();
+
+  if (adminPlayer && effectivePlayerIds.includes(adminPlayer.id)) {
     txRows.push({
-      player_id: admin_id,
-      amount: amountMap[admin_id],
+      player_id: adminPlayer.id,
+      amount: amountMap[adminPlayer.id],
       type: 'ADJUSTMENT',
       status: 'APPROVED',
       reference_id: activity.id,

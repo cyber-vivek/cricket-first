@@ -12,7 +12,7 @@ export async function POST(req: Request) {
 
   const { data: player, error } = await supabase
     .from('players')
-    .select('id, name, phone, is_admin, pin, created_at, deactivated_at')
+    .select('id, name, phone, role, pin, created_at, deactivated_at')
     .eq('phone', phone.trim())
     .single();
 
@@ -30,8 +30,9 @@ export async function POST(req: Request) {
     );
   }
 
-  // Admin accounts always require a PIN
-  if (player.is_admin) {
+  // Admin and game_admin accounts both require a PIN
+  const needsPin = player.role === 'admin' || player.role === 'game_admin';
+  if (needsPin) {
     if (!pin) {
       // Phase 1: tell the client a PIN is needed, but reveal nothing else
       return NextResponse.json({ requires_pin: true }, { status: 200 });
@@ -45,5 +46,8 @@ export async function POST(req: Request) {
 
   // Return player info without the PIN hash or deactivated_at
   const { pin: _pin, deactivated_at: _deleted, ...safePlayer } = player;
-  return NextResponse.json(safePlayer);
+  return NextResponse.json({
+    ...safePlayer,
+    is_admin: player.role === 'admin',
+  });
 }
