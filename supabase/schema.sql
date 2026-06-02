@@ -9,10 +9,16 @@ CREATE TABLE IF NOT EXISTS players (
   name TEXT NOT NULL,
   phone TEXT NOT NULL UNIQUE,
   is_admin BOOLEAN DEFAULT FALSE,
-  pin TEXT,                        -- hashed PIN, required for admin accounts
+  pin TEXT,                        -- hashed PIN, required for admin and game_admin accounts
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  deactivated_at TIMESTAMPTZ       -- NULL = active, set = inactive (reversible)
+  deactivated_at TIMESTAMPTZ,      -- NULL = active, set = inactive (reversible)
+  role TEXT NOT NULL DEFAULT 'player' CHECK (role IN ('player', 'game_admin', 'admin'))
 );
+
+-- Migration: ensure role column exists on pre-existing installations and backfill from is_admin
+ALTER TABLE players ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'player'
+  CHECK (role IN ('player', 'game_admin', 'admin'));
+UPDATE players SET role = 'admin' WHERE is_admin = TRUE AND role = 'player';
 
 -- Matches table
 CREATE TABLE IF NOT EXISTS matches (
@@ -20,8 +26,18 @@ CREATE TABLE IF NOT EXISTS matches (
   date DATE NOT NULL DEFAULT CURRENT_DATE,
   total_cost NUMERIC(10, 2) NOT NULL,
   notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by UUID REFERENCES players(id) ON DELETE SET NULL
 );
+
+-- Migration: ensure created_by exists on pre-existing installations
+ALTER TABLE matches ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES players(id) ON DELETE SET NULL;
+
+-- Backfill historical matches with the current admin as creator (only fills NULLs, safe to re-run)
+UPDATE matches
+SET created_by = (SELECT id FROM players WHERE role = 'admin' LIMIT 1)
+WHERE created_by IS NULL
+  AND EXISTS (SELECT 1 FROM players WHERE role = 'admin');
 
 -- Match players (join table: who played in which match)
 CREATE TABLE IF NOT EXISTS match_players (
@@ -49,21 +65,24 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 
 -- View: players with their computed balance
+-- Column order is preserved so CREATE OR REPLACE works on pre-existing installations.
+-- is_admin is derived from role for backward compatibility; role is appended at the end.
 CREATE OR REPLACE VIEW player_balances AS
 SELECT
   p.id,
   p.name,
   p.phone,
-  p.is_admin,
+  (p.role = 'admin') AS is_admin,
   p.created_at,
   COALESCE(
     SUM(CASE WHEN t.status = 'APPROVED' THEN t.amount ELSE 0 END),
     0
-  ) AS balance
+  ) AS balance,
+  p.role
 FROM players p
 LEFT JOIN transactions t ON t.player_id = p.id
 WHERE p.deactivated_at IS NULL
-GROUP BY p.id, p.name, p.phone, p.is_admin, p.created_at;
+GROUP BY p.id, p.name, p.phone, p.role, p.created_at;
 
 -- Activities table (breakfast, dinner, other group expenses)
 CREATE TABLE IF NOT EXISTS activities (
@@ -72,8 +91,18 @@ CREATE TABLE IF NOT EXISTS activities (
   title TEXT NOT NULL,
   total_cost NUMERIC(10, 2) NOT NULL,
   notes TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  created_by UUID REFERENCES players(id) ON DELETE SET NULL
 );
+
+-- Migration: ensure created_by exists on pre-existing installations
+ALTER TABLE activities ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES players(id) ON DELETE SET NULL;
+
+-- Backfill historical activities with the current admin as creator (only fills NULLs, safe to re-run)
+UPDATE activities
+SET created_by = (SELECT id FROM players WHERE role = 'admin' LIMIT 1)
+WHERE created_by IS NULL
+  AND EXISTS (SELECT 1 FROM players WHERE role = 'admin');
 
 -- Activity players (join table: who participated in which activity)
 CREATE TABLE IF NOT EXISTS activity_players (

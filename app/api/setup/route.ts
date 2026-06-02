@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 
   const { data, error } = await supabase
     .from('players')
-    .insert({ name: name.trim(), phone: phone.trim(), is_admin: true })
+    .insert({ name: name.trim(), phone: phone.trim(), is_admin: true, role: 'admin' })
     .select()
     .single();
 

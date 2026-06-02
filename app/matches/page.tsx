@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Player, Match } from '@/lib/types';
+import { Player, Match, canManageGames } from '@/lib/types';
 import { useAuth } from '@/lib/auth-context';
 
 export default function MatchesPage() {
@@ -12,6 +12,7 @@ export default function MatchesPage() {
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   // Form state
   const today = new Date().toISOString().split('T')[0];
@@ -68,6 +69,37 @@ export default function MatchesPage() {
   );
   const remaining = totalCost ? Number(totalCost) - customTotal : 0;
 
+  const resetForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setDate(today);
+    setTotalCost('');
+    setSelectedPlayers([]);
+    setNotes('');
+    setCustomSplit(false);
+    setCustomAmounts({});
+    setError('');
+  };
+
+  const startEdit = (match: Match) => {
+    const mps = match.match_players ?? [];
+    const ids = mps.map((mp) => mp.player_id);
+    const amounts: Record<string, string> = {};
+    mps.forEach((mp) => { amounts[mp.player_id] = String(mp.cost_share); });
+    const firstShare = mps[0] ? Number(mps[0].cost_share) : 0;
+    const allSame = mps.length > 0 && mps.every((mp) => Number(mp.cost_share) === firstShare);
+
+    setEditingId(match.id);
+    setShowForm(true);
+    setDate(match.date);
+    setTotalCost(String(match.total_cost));
+    setSelectedPlayers(ids);
+    setNotes(match.notes ?? '');
+    setCustomSplit(!allSame);
+    setCustomAmounts(allSame ? {} : amounts);
+    setError('');
+  };
+
   const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setError('');
@@ -106,23 +138,20 @@ export default function MatchesPage() {
       admin_id: user?.id,
     };
 
-    const res = await fetch('/api/matches', {
-      method: 'POST',
+    const url = editingId ? `/api/matches/${editingId}` : '/api/matches';
+    const method = editingId ? 'PATCH' : 'POST';
+
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
     const data = await res.json();
     if (!res.ok) {
-      setError(data.error ?? 'Failed to record match');
+      setError(data.error ?? (editingId ? 'Failed to update match' : 'Failed to record match'));
     } else {
-      setShowForm(false);
-      setDate(today);
-      setTotalCost('');
-      setSelectedPlayers([]);
-      setNotes('');
-      setCustomSplit(false);
-      setCustomAmounts({});
+      resetForm();
       fetchData();
     }
     setCreating(false);
@@ -132,20 +161,22 @@ export default function MatchesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Matches</h1>
-        {user?.is_admin && (
+        {canManageGames(user) && (
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => (showForm ? resetForm() : setShowForm(true))}
             className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-700"
           >
-            + New Match
+            {showForm ? 'Close' : '+ New Match'}
           </button>
         )}
       </div>
 
       {/* Create match form — admin only */}
-      {user?.is_admin && showForm && (
+      {canManageGames(user) && showForm && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <h2 className="font-semibold text-gray-700 text-sm mb-4">Record Match</h2>
+          <h2 className="font-semibold text-gray-700 text-sm mb-4">
+            {editingId ? 'Edit Match' : 'Record Match'}
+          </h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -340,11 +371,15 @@ export default function MatchesPage() {
                 disabled={creating}
                 className="bg-green-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
               >
-                {creating ? 'Saving…' : '🏏 Record & Deduct'}
+                {creating
+                  ? 'Saving…'
+                  : editingId
+                  ? '💾 Save Changes'
+                  : '🏏 Record & Deduct'}
               </button>
               <button
                 type="button"
-                onClick={() => setShowForm(false)}
+                onClick={resetForm}
                 className="border border-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm hover:bg-gray-50"
               >
                 Cancel
@@ -372,7 +407,9 @@ export default function MatchesPage() {
             return (
               <div
                 key={match.id}
-                className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
+                className={`bg-white rounded-xl border shadow-sm p-5 ${
+                  editingId === match.id ? 'border-green-300 ring-1 ring-green-200' : 'border-gray-100'
+                }`}
               >
                 <div className="flex items-start justify-between gap-4 mb-3">
                   <div>
@@ -387,6 +424,11 @@ export default function MatchesPage() {
                     {match.notes && (
                       <p className="text-xs text-gray-400 mt-0.5">{match.notes}</p>
                     )}
+                    {match.creator?.name && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        Added by {match.creator.name}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right flex-shrink-0">
                     <p className="font-bold text-gray-800">
@@ -398,6 +440,14 @@ export default function MatchesPage() {
                         ? ` · ₹${Number(mPlayers[0].cost_share).toFixed(2)} each`
                         : ' · custom split'}
                     </p>
+                    {canManageGames(user) && (
+                      <button
+                        onClick={() => startEdit(match)}
+                        className="text-xs text-blue-500 hover:underline mt-1"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-1.5">

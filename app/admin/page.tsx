@@ -39,6 +39,13 @@ export default function AdminPage() {
   const [pinError, setPinError] = useState('');
   const [pinSuccess, setPinSuccess] = useState('');
 
+  // Game admin promote/revoke
+  const [promoteId, setPromoteId] = useState<string | null>(null);
+  const [promotePin, setPromotePin] = useState('');
+  const [promoteConfirmPin, setPromoteConfirmPin] = useState('');
+  const [promoteError, setPromoteError] = useState('');
+  const [roleSubmitting, setRoleSubmitting] = useState<string | null>(null);
+
   const fetchData = () => {
     Promise.all([
       fetch('/api/transactions?status=PENDING').then((r) => r.json()),
@@ -91,6 +98,58 @@ export default function AdminPage() {
       setConfirmPin('');
     }
     setPinSubmitting(false);
+  };
+
+  const handlePromote = async (e: React.SyntheticEvent, playerId: string) => {
+    e.preventDefault();
+    setPromoteError('');
+
+    if (promotePin !== promoteConfirmPin) {
+      setPromoteError('PINs do not match');
+      return;
+    }
+    if (promotePin.length < 4) {
+      setPromoteError('PIN must be at least 4 characters');
+      return;
+    }
+
+    setRoleSubmitting(playerId);
+    const res = await fetch(`/api/players/${playerId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'set_role',
+        new_role: 'game_admin',
+        new_pin: promotePin,
+        admin_id: user?.id,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      setPromoteError(data.error ?? 'Failed to promote');
+    } else {
+      setPromoteId(null);
+      setPromotePin('');
+      setPromoteConfirmPin('');
+      fetchData();
+    }
+    setRoleSubmitting(null);
+  };
+
+  const handleRevoke = async (playerId: string) => {
+    setRoleSubmitting(playerId);
+    await fetch(`/api/players/${playerId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'set_role',
+        new_role: 'player',
+        admin_id: user?.id,
+      }),
+    });
+    fetchData();
+    setRoleSubmitting(null);
   };
 
   const handleManualAdd = async (e: React.SyntheticEvent) => {
@@ -297,6 +356,123 @@ export default function AdminPage() {
           </form>
         </div>
       </section>
+      {/* Game admins */}
+      <section>
+        <h2 className="font-semibold text-gray-700 mb-3">Game Admins</h2>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+          <p className="text-xs text-gray-400 mb-4">
+            Game admins can record matches and activities but cannot approve top-ups or adjust balances.
+          </p>
+          {loading ? (
+            <p className="text-center text-gray-400 text-sm py-4">Loading…</p>
+          ) : (
+            <ul className="divide-y divide-gray-50">
+              {players
+                .filter((p) => p.role !== 'admin')
+                .map((player) => {
+                  const isGameAdmin = player.role === 'game_admin';
+                  const isPromoting = promoteId === player.id;
+                  return (
+                    <li key={player.id} className="py-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-medium text-gray-800 text-sm truncate">
+                            {player.name}
+                          </span>
+                          {isGameAdmin && (
+                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-medium">
+                              Game Admin
+                            </span>
+                          )}
+                        </div>
+                        {isGameAdmin ? (
+                          <button
+                            onClick={() => handleRevoke(player.id)}
+                            disabled={roleSubmitting === player.id}
+                            className="text-xs border border-red-200 text-red-500 px-3 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50"
+                          >
+                            {roleSubmitting === player.id ? '…' : 'Revoke'}
+                          </button>
+                        ) : isPromoting ? (
+                          <button
+                            onClick={() => {
+                              setPromoteId(null);
+                              setPromotePin('');
+                              setPromoteConfirmPin('');
+                              setPromoteError('');
+                            }}
+                            className="text-xs text-gray-400 hover:text-gray-600"
+                          >
+                            Cancel
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setPromoteId(player.id);
+                              setPromotePin('');
+                              setPromoteConfirmPin('');
+                              setPromoteError('');
+                            }}
+                            className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700"
+                          >
+                            Make Game Admin
+                          </button>
+                        )}
+                      </div>
+
+                      {isPromoting && (
+                        <form
+                          onSubmit={(e) => handlePromote(e, player.id)}
+                          className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3"
+                        >
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">New PIN</label>
+                            <input
+                              type="password"
+                              placeholder="Min 4 characters"
+                              value={promotePin}
+                              onChange={(e) => setPromotePin(e.target.value)}
+                              required
+                              autoFocus
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-500 mb-1">Confirm PIN</label>
+                            <input
+                              type="password"
+                              placeholder="Re-enter PIN"
+                              value={promoteConfirmPin}
+                              onChange={(e) => setPromoteConfirmPin(e.target.value)}
+                              required
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                            />
+                          </div>
+                          {promoteError && (
+                            <p className="text-red-500 text-xs sm:col-span-2">{promoteError}</p>
+                          )}
+                          <div className="sm:col-span-2">
+                            <button
+                              type="submit"
+                              disabled={roleSubmitting === player.id}
+                              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {roleSubmitting === player.id ? 'Saving…' : 'Confirm Promote'}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </li>
+                  );
+                })}
+              {players.filter((p) => p.role !== 'admin').length === 0 && (
+                <li className="py-4 text-center text-sm text-gray-400">No other players yet.</li>
+              )}
+            </ul>
+          )}
+        </div>
+      </section>
+
       {/* Change PIN */}
       <section>
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">

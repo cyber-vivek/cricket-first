@@ -16,8 +16,6 @@ export default function PlayersPage() {
 
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [pin, setPin] = useState('');
   const [phoneError, setPhoneError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -72,7 +70,7 @@ export default function PlayersPage() {
     const res = await fetch('/api/players', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, phone, is_admin: isAdmin, pin: isAdmin ? pin : undefined }),
+      body: JSON.stringify({ name, phone }),
     });
 
     const data = await res.json();
@@ -81,8 +79,6 @@ export default function PlayersPage() {
     } else {
       setName('');
       setPhone('');
-      setIsAdmin(false);
-      setPin('');
       setPhoneError('');
       fetchPlayers();
     }
@@ -136,30 +132,9 @@ export default function PlayersPage() {
               </button>
             </div>
 
-            <label className="flex items-center gap-2 cursor-pointer w-fit">
-              <input
-                type="checkbox"
-                checked={isAdmin}
-                onChange={(e) => { setIsAdmin(e.target.checked); setPin(''); }}
-                className="w-4 h-4 accent-green-600"
-              />
-              <span className="text-sm text-gray-600">Grant admin role</span>
-            </label>
-
-            {isAdmin && (
-              <div className="max-w-xs">
-                <label className="block text-xs text-gray-500 mb-1">Admin PIN *</label>
-                <input
-                  type="password"
-                  placeholder="Set a PIN for this admin"
-                  value={pin}
-                  onChange={(e) => setPin(e.target.value)}
-                  required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400"
-                />
-                <p className="text-xs text-gray-400 mt-1">Required to log in as admin</p>
-              </div>
-            )}
+            <p className="text-xs text-gray-400">
+              To make a player a game admin, add them here first and then promote them from the Admin panel.
+            </p>
           </form>
           {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
         </div>
